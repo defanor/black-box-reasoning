@@ -1,5 +1,6 @@
 import Providers
 import Data.HVect
+import Data.Fin
 
 %default total
 %language TypeProviders
@@ -30,6 +31,11 @@ data MTL : Nat -> Type where
 (++) [] ys = ys
 (++) ((::) x {eq} xs) ys = (::) x {eq} $ xs ++ ys
 
+index : Fin n -> MTL n -> Type
+index FZ     (x::xs) = x
+index (FS k) (x::xs) = index k xs
+index FZ     [] impossible
+
 -- simply turns (f: bb -> Type) into ((x:bb) -> f x)
 h : ({ib: Bool} -> {in1, in2, o: Nat} -> blackbox (ib, in1, in2) = o -> Type) -> Type
 h f = {ib: Bool} -> {in1, in2, o: Nat} -> (x:(blackbox (ib, in1, in2) = o)) -> f x
@@ -45,73 +51,68 @@ confirm : ({ib: Bool} -> {in1, in2, o: Nat} -> (blackbox (ib, in1, in2) = o) -> 
 confirm f [] = []
 confirm f ((::) x xs {eq}) = mt f x {eq} :: confirm f xs
 
--- only one kind of experiment here
+
+
+-- only one kind of experiment here, in two versions: for single and
+-- multiple tests
 experiment : (Bool, Nat, Nat) -> IO (Provider Type)
 experiment inp@(o, a1, a2) = do
   out <- return $ if o then a1 + a2 else (if lte a2 a1 then a1 - a2 else a1 * a2)
   return (Provide (blackbox inp = out))
 
--- beginning to poke the box
-%provide (t00 : Type) with (experiment (True, Z, Z))
-%provide (t01 : Type) with (experiment (True, Z, 1))
-%provide (t10 : Type) with (experiment (True, 1, Z))
-%provide (t11 : Type) with (experiment (True, 1, 1))
-%provide (f00 : Type) with (experiment (False, Z, Z))
-%provide (f01 : Type) with (experiment (False, Z, 1))
-%provide (f10 : Type) with (experiment (False, 1, Z))
-%provide (f11 : Type) with (experiment (False, 1, 1))
+experiment' : Vect n (Bool, Nat, Nat) -> IO (MTL n)
+experiment' [] = return []
+experiment' (inp@(o, a1, a2)::xs) = do
+  out <- return $ if o then a1 + a2 else (if lte a2 a1 then a1 - a2 else a1 * a2)
+  next <- experiment' xs
+  return $ (blackbox inp = out) :: next
 
-initialTests : MTL 8
-initialTests = [t00, t01, t10, t11, f00, f01, f10, f11]
--- blackbox (True, 0, 0) = 0
--- blackbox (True, 0, 1) = 1
--- blackbox (True, 1, 0) = 1
--- blackbox (True, 1, 1) = 2
--- blackbox (False, 0, 0) = 0
--- blackbox (False, 0, 1) = 0
--- blackbox (False, 1, 0) = 1
--- blackbox (False, 1, 1) = 0
+experimentV : Vect n (Bool, Nat, Nat) -> IO (Provider (MTL n))
+experimentV v = do
+  types <- experiment' v
+  return (Provide types)
+
+
+-- beginning to poke the box
+%provide (initialTests : MTL 8) with (experimentV [
+         (True, 0, 0),  -- 0
+         (True, 0, 1),  -- 1
+         (True, 1, 0),  -- 1
+         (True, 1, 1),  -- 2
+         (False, 0, 0), -- 0
+         (False, 0, 1), -- 0
+         (False, 1, 0), -- 1
+         (False, 1, 1)  -- 0
+         ])
 
 -- the first guess
 tPlusFMinus : {ib: Bool} -> {in1, in2, o: Nat} -> (blackbox (ib, in1, in2) = o) -> Type
 tPlusFMinus {ib} {in1} {in2} {o} ob = if ib then o = in1 + in2 else o = in1 - in2
 
--- confirmTPlusFMinus : HVect (confirm tPlusFMinus initialTests)
--- confirmTPlusFMinus = [\x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl]
+confirmTPlusFMinus : HVect (confirm tPlusFMinus initialTests)
+confirmTPlusFMinus = [\x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl]
 
-%provide (t42_23 : Type) with (experiment (True, 42, 23))
-%provide (t23_42 : Type) with (experiment (True, 23, 42))
-%provide (f42_23 : Type) with (experiment (False, 42, 23))
-%provide (f23_42 : Type) with (experiment (False, 23, 42))
-
-furtherTests : MTL 4
-furtherTests = [t42_23, t23_42, f42_23, f23_42]
--- blackbox (True, 42, 23) = 65
--- blackbox (True, 23, 42) = 65
--- blackbox (False, 42, 23) = 19
--- blackbox (False, 23, 42) = 966
+%provide (furtherTests : MTL 4) with (experimentV [
+         (True, 42, 23),  -- 65
+         (True, 23, 42),  -- 65
+         (False, 42, 23), -- 19
+         (False, 23, 42)  -- 966
+         ])
 
 -- confirmTPlusFMinus2 : HVect (confirm tPlusFMinus furtherTests)
--- confirmTPlusFMinus2 = ?mv
+-- confirmTPlusFMinus2 = ?mv -- uh oh, 966 = 0!
 
--- uh oh, 966 = 0!
-
-refuteTPlusFMinus2 : f23_42 -> HVect (confirm tPlusFMinus furtherTests) -> Void
+refuteTPlusFMinus2 : index 3 furtherTests -> HVect (confirm tPlusFMinus furtherTests) -> Void
 refuteTPlusFMinus2 f [_,_,_,d] = uninhabited (sym (d f))
 
 -- is it multiplication? why it happened?
 
-%provide (f3_5 : Type) with (experiment (False, 3, 5))
-%provide (f5_3 : Type) with (experiment (False, 5, 3))
-%provide (f7_13 : Type) with (experiment (False, 7, 13))
-%provide (f13_7 : Type) with (experiment (False, 13, 7))
-
-moreTests : MTL 4
-moreTests = [f3_5, f5_3, f7_13, f13_7]
--- blackbox (False, 3, 5) = 15
--- blackbox (False, 5, 3) = 2
--- blackbox (False, 7, 13) = 91
--- blackbox (False, 13, 7) = 6
+%provide (moreTests : MTL 4) with (experimentV [
+         (False, 3, 5),  -- 15
+         (False, 5, 3),  -- 2
+         (False, 7, 13), -- 91
+         (False, 13, 7)  -- 6
+         ])
  
 -- ok, it happens when the first Nat is lower
 
@@ -119,8 +120,8 @@ tPlusFMinusMult : {ib: Bool} -> {in1, in2, o: Nat} -> (blackbox (ib, in1, in2) =
 tPlusFMinusMult {ib} {in1} {in2} {o} ob =
   o = if ib then in1 + in2 else (if lte in2 in1 then in1 - in2 else in1 * in2)
 
--- confirmTPlusFMinusMult : HVect (confirm tPlusFMinusMult $ initialTests ++ furtherTests ++ moreTests)
--- confirmTPlusFMinusMult = confirmTPlusFMinus ++ [\x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl]
+confirmTPlusFMinusMult : HVect (confirm tPlusFMinusMult $ initialTests ++ furtherTests ++ moreTests)
+confirmTPlusFMinusMult = confirmTPlusFMinus ++ [\x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl]
 
 -- now we could reason using this model
 
