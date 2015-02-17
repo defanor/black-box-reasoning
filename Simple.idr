@@ -89,8 +89,8 @@ experimentV v = do
 tPlusFMinus : {ib: Bool} -> {in1, in2, o: Nat} -> (blackbox (ib, in1, in2) = o) -> Type
 tPlusFMinus {ib} {in1} {in2} {o} ob = if ib then o = in1 + in2 else o = in1 - in2
 
-confirmTPlusFMinus : HVect (confirm tPlusFMinus initialTests)
-confirmTPlusFMinus = [\x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl]
+-- confirmTPlusFMinus : HVect (confirm tPlusFMinus initialTests)
+-- confirmTPlusFMinus = [\x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl]
 
 %provide (furtherTests : MTL 4) with (experimentV [
          (True, 42, 23),  -- 65
@@ -120,8 +120,8 @@ tPlusFMinusMult : {ib: Bool} -> {in1, in2, o: Nat} -> (blackbox (ib, in1, in2) =
 tPlusFMinusMult {ib} {in1} {in2} {o} ob =
   o = if ib then in1 + in2 else (if lte in2 in1 then in1 - in2 else in1 * in2)
 
-confirmTPlusFMinusMult : HVect (confirm tPlusFMinusMult $ initialTests ++ furtherTests ++ moreTests)
-confirmTPlusFMinusMult = confirmTPlusFMinus ++ [\x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl]
+-- confirmTPlusFMinusMult : HVect (confirm tPlusFMinusMult $ initialTests ++ furtherTests ++ moreTests)
+-- confirmTPlusFMinusMult = confirmTPlusFMinus ++ [\x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl, \x => Refl]
 
 -- now we could reason using this model
 
